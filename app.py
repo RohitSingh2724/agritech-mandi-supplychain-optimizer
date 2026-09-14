@@ -14,20 +14,20 @@ st.set_page_config(
 )
 
 st.title("🌾 AgriTech Mandi-to-Market Supply Chain Optimizer")
-st.markdown("##### *Comprehensive Supply Chain Analytics, Geospatial Map & Multi-Granularity Time Series Platform*")
+st.markdown("##### *Supply Chain Analytics, Geospatial Discovery, Weather IoT & Logistics Efficiency Platform*")
 st.markdown("---")
 
 # ---------------------------------------------------------
-# NUMBER FORMATTING HELPER (Millions & Thousands)
+# NUMBER FORMATTING HELPER (M & K)
 # ---------------------------------------------------------
 def format_num(val, suffix=""):
     if pd.isna(val) or val is None:
         return "0"
     num = float(val)
     if abs(num) >= 1_000_000:
-        return f"{num / 1_000_000:.2f} M {suffix}".strip()
+        return f"{num / 1_000_000:.2f}M {suffix}".strip()
     elif abs(num) >= 1_000:
-        return f"{num / 1_000:.2f} K {suffix}".strip()
+        return f"{num / 1_000:.2f}K {suffix}".strip()
     else:
         return f"{num:,.2f} {suffix}".strip()
 
@@ -56,7 +56,7 @@ m_col = [c for c in df_arrivals.columns if 'mandi' in c.lower()][0]
 if m_col in df_master.columns:
     df_master[m_col] = df_master[m_col].astype(str).str.strip().str.upper()
 
-# Coordinates mapping for Indian Districts
+# Latitude & Longitude mapping for Indian Districts
 DISTRICT_COORDS = {
     'ludhiana': (30.9010, 75.8573),
     'amritsar': (31.6340, 74.8723),
@@ -104,7 +104,7 @@ selected_mandi_label = st.sidebar.selectbox("Filter by Mandi (Market)", mandis_l
 
 time_granularity = st.sidebar.radio("Time Granularity View", ["Daily", "Weekly", "Monthly"])
 
-# Filter Data
+# Filter Datasets
 df_arr_filtered = df_arrivals.copy()
 df_prc_filtered = df_price.copy()
 
@@ -127,7 +127,7 @@ st.sidebar.download_button(
 # ---------------------------------------------------------
 # TOP KPI CARDS
 # ---------------------------------------------------------
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 
 total_arrivals = df_arr_filtered["arrival_quantity_qtl"].sum()
 
@@ -141,32 +141,38 @@ price_crashes = len(df_prc_filtered[(df_prc_filtered[modal_col].notnull()) &
 avg_delay_rate = (len(df_transport[df_transport["clean_transit_hours"] > 24]) / len(df_transport) * 100) if len(df_transport) > 0 else 0
 avg_transit_h = df_transport["clean_transit_hours"].mean()
 
+rain_col = [c for c in df_weather.columns if 'rain' in c.lower()][0]
+avg_rain = df_weather[rain_col].mean() if rain_col in df_weather.columns else 0.0
+
 with col1:
     st.metric("📦 Total Arrival Volume", format_num(total_arrivals, "Qtl"))
 
 with col2:
-    st.metric("🚨 Price Crash Alerts (Price < MSP)", format_num(price_crashes, "Incidents"))
+    st.metric("🚨 Price Crash Alerts", format_num(price_crashes, "Incidents"))
 
 with col3:
-    st.metric("🚚 Transit Delay Rate (>24h)", f"{avg_delay_rate:.2f}%")
+    st.metric("🚚 Transit Delay Rate", f"{avg_delay_rate:.2f}%")
 
 with col4:
     st.metric("⏱️ Avg Transit Time", f"{avg_transit_h:.1f} Hours")
 
+with col5:
+    st.metric("🌧️ Avg Rainfall Level", f"{avg_rain:.2f} mm")
+
 st.markdown("---")
 
 # ---------------------------------------------------------
-# DASHBOARD TABS
+# INTERACTIVE DASHBOARD TABS
 # ---------------------------------------------------------
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📈 Arrival Trends",
-    "🗺️ Interactive Mandi Map",
-    "💰 Price Crash Analysis",
-    "🚚 Warehouse Logistics",
-    "🌧️ Weather Sensor Impact"
+    "📈 Arrival Trends & Volume Share",
+    "💰 Price Crashes (Price vs. MSP)",
+    "🗺️ Mandi Network Map",
+    "🚚 Logistics & Fleet Efficiency",
+    "🌧️ Weather Impact & Heatmap"
 ])
 
-# TAB 1: ARRIVAL TRENDS (DAILY / WEEKLY / MONTHLY)
+# TAB 1: ARRIVAL TRENDS & PIE CHART VOLUME SHARE
 with tab1:
     st.subheader(f"Crop Arrival Trends ({time_granularity} View)")
     
@@ -188,14 +194,67 @@ with tab1:
             x="period", 
             y="arrival_quantity_qtl", 
             color="crop_name",
-            labels={"period": "Timeline", "arrival_quantity_qtl": "Arrival Volume (Quintals)", "crop_name": "Crop"},
+            labels={"period": "Timeline", "arrival_quantity_qtl": "Arrival Volume (Qtl)", "crop_name": "Crop"},
             title=f"Crop Arrival Volume Over Time ({time_granularity} View)"
         )
         st.plotly_chart(fig_trend, use_container_width=True)
 
-# TAB 2: INTERACTIVE MAP
+    st.markdown("---")
+    col_c1, col_c2 = st.columns(2)
+    
+    crop_summary = df_arr_filtered.groupby("crop_name")["arrival_quantity_qtl"].sum().reset_index().sort_values(by="arrival_quantity_qtl", ascending=True)
+    
+    with col_c1:
+        st.subheader("1. Horizontal Volume Ranking")
+        fig_bar = px.bar(
+            crop_summary, 
+            y="crop_name", 
+            x="arrival_quantity_qtl", 
+            orientation="h",
+            color="crop_name",
+            labels={"crop_name": "Crop Variety", "arrival_quantity_qtl": "Volume (Quintals)"},
+            title="Total Arrival Volume Ranking"
+        )
+        st.plotly_chart(fig_bar, use_container_width=True)
+        
+    with col_c2:
+        st.subheader("2. Crop Variety Volume Share (Donut Chart)")
+        fig_donut = px.pie(
+            crop_summary, 
+            values="arrival_quantity_qtl", 
+            names="crop_name", 
+            hole=0.5,  # Creates the hollow center for a Donut Chart
+            title="Percentage Volume Share by Crop Variety"
+    )
+    st.plotly_chart(fig_donut, use_container_width=True)
+
+# TAB 2: PRICE CRASHES (PRICE VS MSP)
 with tab2:
-    st.subheader("Geospatial Mandi Network Map (Punjab, Haryana, Uttar Pradesh)")
+    st.subheader("Modal Price vs. Minimum Support Price (MSP)")
+    
+    crashes_df = df_prc_filtered[(df_prc_filtered[modal_col].notnull()) & 
+                                 (df_prc_filtered[msp_col].notnull()) & 
+                                 (df_prc_filtered[modal_col] < df_prc_filtered[msp_col])].copy()
+    crashes_df["price_deficit"] = crashes_df[msp_col] - crashes_df[modal_col]
+    
+    if 'clean_date' in df_prc_filtered.columns:
+        price_trend = df_prc_filtered.groupby('clean_date')[[modal_col, msp_col]].mean().reset_index()
+        fig_price = go.Figure()
+        fig_price.add_trace(go.Scatter(x=price_trend['clean_date'], y=price_trend[modal_col], mode='lines', name='Wholesale Modal Price'))
+        fig_price.add_trace(go.Scatter(x=price_trend['clean_date'], y=price_trend[msp_col], mode='lines', name='MSP Benchmark', line=dict(dash='dash', color='red')))
+        fig_price.update_layout(title="Multi-Line Timeline: Modal Price vs MSP Benchmark (Crashes Below Red Line)", xaxis_title="Date", yaxis_title="Price (₹ / Qtl)")
+        st.plotly_chart(fig_price, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("Top Price Crash Deficit Instances")
+    st.dataframe(
+        crashes_df[["crop_name", "clean_date", modal_col, msp_col, "price_deficit"]].sort_values(by="price_deficit", ascending=False).head(50),
+        use_container_width=True
+    )
+
+# TAB 3: GEOSPATIAL MAP
+with tab3:
+    st.subheader("Geospatial Mandi Network Map (Punjab, Haryana, UP)")
     
     geo_df = pd.merge(df_arr_filtered, df_master[[m_col, "mandi_name", "district", "state", "lat", "lon"]].drop_duplicates(), on=m_col, how="left")
     geo_summary = geo_df.groupby([m_col, "mandi_name", "district", "state", "lat", "lon"])["arrival_quantity_qtl"].sum().reset_index()
@@ -213,61 +272,76 @@ with tab2:
             zoom=6,
             center={"lat": 30.2, "lon": 75.8},
             mapbox_style="open-street-map",
-            title="Interactive Mandi Map (Bubble Size = Total Arrival Volume)"
+            title="Interactive Mandi Bubble Map (Bubble Size = Arrival Volume)"
         )
         st.plotly_chart(fig_map, use_container_width=True)
 
-# TAB 3: PRICE CRASH ANALYSIS
-with tab3:
-    st.subheader("Wholesale Modal Price vs. Minimum Support Price (MSP)")
-    
-    crashes_df = df_prc_filtered[(df_prc_filtered[modal_col].notnull()) & 
-                                 (df_prc_filtered[msp_col].notnull()) & 
-                                 (df_prc_filtered[modal_col] < df_prc_filtered[msp_col])].copy()
-    crashes_df["price_loss"] = crashes_df[msp_col] - crashes_df[modal_col]
-    
-    col_p1, col_p2 = st.columns([2, 1])
-    with col_p1:
-        fig_prc = px.scatter(
-            df_prc_filtered, 
-            x=modal_col, 
-            y=msp_col, 
-            color="crop_name",
-            labels={modal_col: "Modal Price (₹)", msp_col: "MSP Benchmark (₹)"},
-            title="Modal Price vs MSP Comparison"
-        )
-        st.plotly_chart(fig_prc, use_container_width=True)
-    with col_p2:
-        st.subheader("Price Crash Deficit Table")
-        st.dataframe(crashes_df[["crop_name", "clean_date", modal_col, msp_col, "price_loss"]].sort_values(by="price_loss", ascending=False).head(50), use_container_width=True)
-
-# TAB 4: LOGISTICS & WAREHOUSES
+# TAB 4: LOGISTICS & FLEET EFFICIENCY
 with tab4:
-    st.subheader("Warehouse Route Logistics Performance")
-    wh_col = [c for c in df_transport.columns if 'ware' in c.lower() or 'dest' in c.lower() or 'wh' in c.lower()][0]
-    wh_summary = df_transport.groupby(wh_col).agg(
-        total_trips=("clean_transit_hours", "count"),
-        avg_transit_hours=("clean_transit_hours", "mean")
-    ).reset_index()
+    col_l1, col_l2 = st.columns(2)
     
-    fig_wh = px.bar(wh_summary, x=wh_col, y="avg_transit_hours", color=wh_col, title="Average Transit Hours by Warehouse")
-    st.plotly_chart(fig_wh, use_container_width=True)
-
-# TAB 5: WEATHER SENSOR IMPACT
-with tab5:
-    st.subheader("Weather Sensor Impact on Crop Arrivals")
-    rain_col = [c for c in df_weather.columns if 'rain' in c.lower()][0]
-    if 'clean_date' in df_arrivals.columns and 'clean_date' in df_weather.columns:
-        daily_arr = df_arrivals.groupby('clean_date')['arrival_quantity_qtl'].sum().reset_index()
-        daily_wth = df_weather.groupby('clean_date')[rain_col].mean().reset_index()
-        weather_arr = pd.merge(daily_arr, daily_wth, on='clean_date')
+    with col_l1:
+        st.subheader("1. Warehouse Route Delay Ranking")
+        wh_col = [c for c in df_transport.columns if 'ware' in c.lower() or 'dest' in c.lower() or 'wh' in c.lower()][0]
+        wh_summary = df_transport.groupby(wh_col).agg(
+            total_trips=("clean_transit_hours", "count"),
+            avg_transit_hours=("clean_transit_hours", "mean")
+        ).reset_index().sort_values(by="avg_transit_hours", ascending=True)
         
-        fig_weather = px.scatter(
-            weather_arr, 
-            x=rain_col, 
-            y="arrival_quantity_qtl",
-            labels={rain_col: "Rainfall (mm)", "arrival_quantity_qtl": "Daily Arrival Volume (Qtl)"},
-            trendline="ols",
-            title="Correlation Between Heavy Rainfall Days and Arrival Drops"
+        fig_wh = px.bar(
+            wh_summary, 
+            y=wh_col, 
+            x="avg_transit_hours", 
+            orientation="h",
+            color="avg_transit_hours",
+            title="Average Transit Hours by Destination Warehouse"
         )
-        st.plotly_chart(fig_weather, use_container_width=True)
+        st.plotly_chart(fig_wh, use_container_width=True)
+
+    with col_l2:
+        st.subheader("2. Distance (KM) vs. Transit Time Efficiency")
+        if "distance_km" in df_transport.columns:
+            fig_eff = px.scatter(
+                df_transport, 
+                x="distance_km", 
+                y="clean_transit_hours",
+                trendline="ols",
+                color="destination_warehouse",
+                title="Trip Efficiency Scatter Plot (Points above line indicate Delays)"
+            )
+            st.plotly_chart(fig_eff, use_container_width=True)
+
+# TAB 5: WEATHER SENSOR IMPACT & HEATMAP
+with tab5:
+    col_w1, col_w2 = st.columns(2)
+    
+    with col_w1:
+        st.subheader("1. Rainfall vs. Arrival Volume Correlation")
+        if 'clean_date' in df_arrivals.columns and 'clean_date' in df_weather.columns:
+            daily_arr = df_arrivals.groupby('clean_date')['arrival_quantity_qtl'].sum().reset_index()
+            daily_wth = df_weather.groupby('clean_date')[rain_col].mean().reset_index()
+            weather_arr = pd.merge(daily_arr, daily_wth, on='clean_date')
+            
+            fig_weather = px.scatter(
+                weather_arr, 
+                x=rain_col, 
+                y="arrival_quantity_qtl",
+                trendline="ols",
+                labels={rain_col: "Rainfall (mm)", "arrival_quantity_qtl": "Daily Arrival Volume (Qtl)"},
+                title="Rainfall (mm) vs Arrival Volumes"
+            )
+            st.plotly_chart(fig_weather, use_container_width=True)
+
+    with col_w2:
+        st.subheader("2. Weather & Metrics Correlation Heatmap")
+        if 'clean_date' in df_arrivals.columns and 'clean_date' in df_weather.columns:
+            merged_metrics = pd.merge(daily_arr, df_weather, on='clean_date', how='inner')
+            corr_mat = merged_metrics.select_dtypes(include=['float64', 'int64']).corr()
+            
+            fig_heat = px.imshow(
+                corr_mat, 
+                text_auto=".2f",
+                color_continuous_scale="Viridis",
+                title="Cross-Metric Correlation Heatmap"
+            )
+            st.plotly_chart(fig_heat, use_container_width=True)
