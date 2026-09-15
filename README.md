@@ -42,8 +42,7 @@ agritech-mandi-supplychain-optimizer/
 
 ---
 
-## 🚪 Gate 1 Proof of Data Cleaning (Raw vs. Clean Row Counts)
-
+## 🧹 Data Cleaning Audit Log & Standardizations
 To ensure data integrity without lazily dropping records, messy inputs were standardized (Mandi IDs, crop name variants, currency symbols, mixed units, and dates).
 
 | Dataset | Raw Row Count | Clean Row Count | Dropped / Filtered % | Key Data Quality Transformations |
