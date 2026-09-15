@@ -2,9 +2,9 @@
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://rohitsingh2724-agritech-mandi-supplychain-optimizer-app-o4pnte.streamlit.app/)
 
-An end-to-end data engineering pipeline, interactive Streamlit analytics dashboard, and proactive AI Agent built for **TransOrg AgentIQ Datathon (Track 3)**.
+An end-to-end data engineering pipeline, interactive Streamlit analytics dashboard, and proactive AI Agent built for **TransOrg AgentIQ Datathon**.
 
-> **🌐 Live Interactive Dashboard**: [rohitsingh2724-agritech-mandi-supplychain-optimizer-app-o4pnte.streamlit.app](https://rohitsingh2724-agritech-mandi-supplychain-optimizer-app-o4pnte.streamlit.app/)  
+> **🌐 Live Interactive Dashboard**: [Mandi Pulse](https://rohitsingh2724-agritech-mandi-supplychain-optimizer-app-o4pnte.streamlit.app/)  
 > **Core Business Question Addressed:** *"Where is the Mandi supply chain losing value for farmers, and why?"*
 
 ---
