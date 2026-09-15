@@ -1,11 +1,10 @@
 # 🌾 AgriTech Mandi-to-Market Supply Chain Optimizer & Price Discovery Platform
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://agritech-mandi-supplychain-optimizer.streamlit.app/)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://rohitsingh2724-agritech-mandi-supplychain-optimizer-app-o4pnte.streamlit.app/)
 
 An end-to-end data engineering pipeline, interactive Streamlit analytics dashboard, and proactive AI Agent built for **TransOrg AgentIQ Datathon (Track 3)**.
 
-> **🌐 Live Interactive Dashboard**: [agritech-mandi-supplychain-optimizer.streamlit.app](https://agritech-mandi-supplychain-optimizer.streamlit.app/)  
-> **⚡ 1-Click Deploy to Streamlit Cloud**: [Deploy Here](https://share.streamlit.io/deploy?repository=RohitSingh2724/agritech-mandi-supplychain-optimizer&branch=main&mainModule=app.py)  
+> **🌐 Live Interactive Dashboard**: [rohitsingh2724-agritech-mandi-supplychain-optimizer-app-o4pnte.streamlit.app](https://rohitsingh2724-agritech-mandi-supplychain-optimizer-app-o4pnte.streamlit.app/)  
 > **Core Business Question Addressed:** *"Where is the Mandi supply chain losing value for farmers, and why?"*
 
 ---
