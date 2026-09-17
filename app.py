@@ -33,18 +33,18 @@ if not (DATA_DIR / "clean_mandi_master.csv").exists():
     DATA_DIR = Path(__file__).parent
 
 # THEME / STYLE — Modern Dark Executive Theme
-PRIMARY = "#38BDF8"       # Electric Blue
+PRIMARY = "#38BDF8"       
 PRIMARY_L = "#7DD3FC"    
 PRIMARY_D = "#0284C7"    
 SECONDARY = "#94A3B8"    
 SECONDARY_L = "#CBD5E1"
-DANGER = "#F87171"       # Red
+DANGER = "#F87171"       
 DANGER_L = "#FCA5A5"
-GOOD = "#34D399"         # Emerald Green
-WARN = "#FBBF24"         # Gold
-INK = "#F8FAFC"          # Bright text
-PAPER = "#0E1117"        # Dark canvas background
-CARD = "#161B22"         # Dark card background
+GOOD = "#34D399"         
+WARN = "#FBBF24"         
+INK = "#F8FAFC"          
+PAPER = "#0E1117"        
+CARD = "#161B22"         
 MUTED = "#94A3B8"        
 LINE = "#30363D"         
 SIDEBAR_BG = "#161B22"   
@@ -516,6 +516,88 @@ if len(w_in_range):
 else:
     weather_risk_index = np.nan
 
+# PRIOR PERIOD DELTA ENGINE
+cur_days = (end_date - start_date).days + 1
+prior_start = start_date - pd.Timedelta(days=cur_days)
+prior_end = start_date - pd.Timedelta(days=1)
+
+if prior_start < min_date:
+    half_days = max(cur_days // 2, 1)
+    prior_start_ts = pd.Timestamp(start_date)
+    prior_end_ts = pd.Timestamp(start_date + pd.Timedelta(days=half_days - 1))
+    cur_start_ts = pd.Timestamp(start_date + pd.Timedelta(days=half_days))
+    cur_end_ts = pd.Timestamp(end_date)
+else:
+    prior_start_ts = pd.Timestamp(prior_start)
+    prior_end_ts = pd.Timestamp(prior_end)
+    cur_start_ts = pd.Timestamp(start_date)
+    cur_end_ts = pd.Timestamp(end_date)
+
+def get_filtered_window(df, s_ts, e_ts):
+    if df.empty or "clean_date" not in df.columns:
+        return pd.DataFrame()
+    m = df["clean_date"].between(s_ts, e_ts)
+    if selected_state != "All States" and "state" in df.columns:
+        m &= (df["state"] == selected_state)
+    if selected_district != "All Districts" and "district" in df.columns:
+        m &= (df["district"] == selected_district)
+    if selected_crop != "All Crops" and "crop_name" in df.columns:
+        m &= (df["crop_name"] == selected_crop)
+    if selected_mandi_label != "All Mandis" and "mandi_display" in df.columns:
+        m &= (df["mandi_display"] == selected_mandi_label)
+    return df[m]
+
+p_price = get_filtered_window(price, prior_start_ts, prior_end_ts)
+p_arr = get_filtered_window(arr, prior_start_ts, prior_end_ts)
+p_trans = get_filtered_window(trans, prior_start_ts, prior_end_ts)
+
+if not p_arr.empty and not p_price.empty:
+    p_price["ym"] = p_price["clean_date"].dt.to_period("M")
+    p_arr["ym"] = p_arr["clean_date"].dt.to_period("M")
+    p_mandi_p = p_price.groupby(["mandi_id", "crop_name", "ym"])["modal_price"].mean().reset_index()
+    p_crop_p = p_price.groupby(["crop_name", "ym"])["modal_price"].mean().reset_index().rename(columns={"modal_price": "crop_modal_price"})
+    p_valued = p_arr.merge(p_mandi_p, on=["mandi_id", "crop_name", "ym"], how="left")
+    p_valued = p_valued.merge(p_crop_p, on=["crop_name", "ym"], how="left")
+    p_valued["modal_price"] = p_valued["modal_price"].fillna(p_valued["crop_modal_price"])
+    p_rev = (p_valued["arrival_quantity_qtl"] * p_valued["modal_price"]).sum()
+    p_arrivals = p_arr["arrival_quantity_qtl"].sum()
+else:
+    p_rev, p_arrivals = np.nan, np.nan
+
+def calc_delta(cur, prior):
+    if pd.isna(cur) or pd.isna(prior) or prior == 0:
+        return None
+    pct = 100 * (cur - prior) / prior
+    direction = "up" if pct >= 0 else "down"
+    return (pct, direction)
+
+delta_rev = calc_delta(total_revenue, p_rev)
+delta_arr = calc_delta(total_arrivals, p_arrivals)
+
+p_msp = p_price.dropna(subset=["msp"]).copy() if not p_price.empty else pd.DataFrame()
+if not p_msp.empty:
+    p_msp["below_msp"] = p_msp["modal_price"] < p_msp["msp"]
+    p_churn = p_msp["below_msp"].mean()
+    p_compliance = 1 - p_churn
+else:
+    p_churn, p_compliance = np.nan, np.nan
+
+delta_compliance = calc_delta(msp_compliance_rate, p_compliance)
+delta_churn = calc_delta(churn_risk_rate, p_churn)
+
+p_avg_transit = p_trans["clean_transit_hours"].mean() if not p_trans.empty else np.nan
+delta_transit = calc_delta(avg_transit, p_avg_transit)
+
+p_w = weather[weather["clean_date"].between(prior_start_ts, prior_end_ts)] if not weather.empty else pd.DataFrame()
+if not p_w.empty:
+    p_heat = (p_w["temperature_celsius"] > 35).mean()
+    p_rain = (p_w["rainfall_mm"] > p_w["rainfall_mm"].quantile(0.85)).mean()
+    p_weather_risk = 100 * np.nanmean([p_heat, p_rain])
+else:
+    p_weather_risk = np.nan
+
+delta_weather = calc_delta(weather_risk_index, p_weather_risk)
+
 # HEADER
 st.markdown(
     f"""<div class="topbar">
@@ -538,21 +620,21 @@ st.markdown(
 # KPI GRID (ULTRA-MODERN DARK CARDS)
 r1c1, r1c2, r1c3 = st.columns(3)
 with r1c1:
-    kpi_card("Est. Market Revenue", f"₹{total_revenue/1e7:,.1f} Cr", f"across filtered mandis", icon="💰")
+    kpi_card("Est. Market Revenue", f"₹{total_revenue/1e7:,.1f} Cr", f"across filtered mandis", icon="💰", delta=delta_rev, delta_good_when="up")
 with r1c2:
-    kpi_card("Total Arrivals", f"{total_arrivals:,.0f} Qtl", f"crop volume in scope", icon="🚜")
+    kpi_card("Total Arrivals", f"{total_arrivals:,.0f} Qtl", f"crop volume in scope", icon="🚜", delta=delta_arr, delta_good_when="up")
 with r1c3:
-    kpi_card("MSP Compliance", f"{msp_compliance_rate*100:,.1f}%" if pd.notna(msp_compliance_rate) else "N/A", "sales at or above MSP", icon="✅")
+    kpi_card("MSP Compliance", f"{msp_compliance_rate*100:,.1f}%" if pd.notna(msp_compliance_rate) else "N/A", "sales at or above MSP", icon="✅", delta=delta_compliance, delta_good_when="up")
 
 st.write("")
 
 r2c1, r2c2, r2c3 = st.columns(3)
 with r2c1:
-    kpi_card("Farmer 'Churn' Risk", f"{churn_risk_rate*100:,.1f}%" if pd.notna(churn_risk_rate) else "N/A", "sales priced below MSP", kind="risk", icon="⚠️")
+    kpi_card("Farmer 'Churn' Risk", f"{churn_risk_rate*100:,.1f}%" if pd.notna(churn_risk_rate) else "N/A", "sales priced below MSP", kind="risk", icon="⚠️", delta=delta_churn, delta_good_when="down")
 with r2c2:
-    kpi_card("Avg Transit Time", f"{avg_transit:,.1f} hrs" if pd.notna(avg_transit) else "N/A", f"~{avg_distance:,.0f} km average trip", kind="gold", icon="🚚")
+    kpi_card("Avg Transit Time", f"{avg_transit:,.1f} hrs" if pd.notna(avg_transit) else "N/A", f"~{avg_distance:,.0f} km average trip", kind="gold", icon="🚚", delta=delta_transit, delta_good_when="down")
 with r2c3:
-    kpi_card("Weather Risk Index", f"{weather_risk_index:,.0f} / 100" if pd.notna(weather_risk_index) else "N/A", "heat + heavy-rain exposure", kind="risk", icon="🌦️")
+    kpi_card("Weather Risk Index", f"{weather_risk_index:,.0f} / 100" if pd.notna(weather_risk_index) else "N/A", "heat + heavy-rain exposure", kind="risk", icon="🌦️", delta=delta_weather, delta_good_when="down")
 
 st.write("")
 
