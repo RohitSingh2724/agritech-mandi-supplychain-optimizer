@@ -327,10 +327,12 @@ CHART_TEMPLATE = dict(
     paper_bgcolor=CARD, plot_bgcolor=CARD,
     font=dict(family="-apple-system, Segoe UI, sans-serif", color=MUTED, size=11),
     title_font=dict(family="-apple-system, Segoe UI, sans-serif", size=14, color=INK),
-    margin=dict(t=30, l=8, r=8, b=8),
+    margin=dict(t=30, l=12, r=12, b=12),
     legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=10, color=INK)),
-    xaxis=dict(gridcolor=GRID, linecolor=LINE, zerolinecolor=GRID),
-    yaxis=dict(gridcolor=GRID, linecolor=LINE, zerolinecolor=GRID),
+    xaxis=dict(gridcolor=GRID, linecolor=LINE, zerolinecolor=GRID, showspikes=True, spikemode="across", spikecolor=PRIMARY, spikethickness=1),
+    yaxis=dict(gridcolor=GRID, linecolor=LINE, zerolinecolor=GRID, showspikes=True, spikemode="across", spikecolor=PRIMARY, spikethickness=1),
+    hovermode="x unified",
+    hoverlabel=dict(bgcolor="#161B22", font_size=12, font_family="-apple-system, Segoe UI, sans-serif", bordercolor=PRIMARY),
 )
 
 RISK_RAMP = ["#1F242D", "#C9A57A", DANGER]
@@ -850,6 +852,7 @@ with tab_price:
         fig = px.line(trend, x="ym_ts", y="modal_price", color="crop_name", markers=True,
                        labels={"ym_ts": "", "modal_price": "Modal price (₹/qtl)", "crop_name": "Crop"},
                        color_discrete_map=CROP_COLORS)
+        fig.update_traces(hovertemplate="<b>%{data.name}</b><br>Modal Price: <b>₹%{y:,.0f}/qtl</b><extra></extra>")
         fig.update_layout(**CHART_TEMPLATE, height=380)
         st.plotly_chart(fig, use_container_width=True)
     with right:
@@ -859,6 +862,7 @@ with tab_price:
         fig2 = px.bar(comp, x="below_msp", y="crop_name", orientation="h",
                        labels={"below_msp": "% sales below MSP", "crop_name": ""},
                        color="below_msp", color_continuous_scale=RISK_RAMP)
+        fig2.update_traces(hovertemplate="Crop: <b>%{y}</b><br>Below MSP: <b>%{x:.1f}%</b><extra></extra>")
         fig2.update_layout(coloraxis_showscale=False, **CHART_TEMPLATE, height=380)
         st.plotly_chart(fig2, use_container_width=True)
 
@@ -872,13 +876,14 @@ with tab_supply:
         fig = px.area(arr_trend, x="ym_ts", y="arrival_quantity_qtl", color="crop_name",
                        labels={"ym_ts": "", "arrival_quantity_qtl": "Arrivals (Qtl)"},
                        color_discrete_map=CROP_COLORS)
+        fig.update_traces(hovertemplate="<b>%{data.name}</b><br>Arrivals: <b>%{y:,.0f} Qtl</b><extra></extra>")
         fig.update_layout(**CHART_TEMPLATE, height=400)
         st.plotly_chart(fig, use_container_width=True)
     with right:
         section_head("🍩", "Crop Volume Share (Centered Donut Chart)", "")
         crop_donut = f_arr.groupby("crop_name")["arrival_quantity_qtl"].sum().reset_index()
         fig_donut = px.pie(crop_donut, values="arrival_quantity_qtl", names="crop_name", hole=0.5)
-        fig_donut.update_traces(textposition='inside', textinfo='percent+label')
+        fig_donut.update_traces(textposition='inside', textinfo='percent+label', hovertemplate="Crop: <b>%{label}</b><br>Volume: <b>%{value:,.0f} Qtl</b> (%{percent})<extra></extra>")
         
         donut_template = {k: v for k, v in CHART_TEMPLATE.items() if k != "legend"}
         fig_donut.update_layout(
@@ -894,6 +899,7 @@ with tab_logistics:
         section_head("⏱️", "Transit time distribution", "histogram")
         fig = px.histogram(f_trans, x="clean_transit_hours", nbins=30, color_discrete_sequence=[PRIMARY],
                             labels={"clean_transit_hours": "Transit hours"})
+        fig.update_traces(hovertemplate="Transit Duration: <b>%{x:.1f} hrs</b><br>Consignments: <b>%{y:,}</b><extra></extra>")
         fig.update_layout(**CHART_TEMPLATE, height=380)
         st.plotly_chart(fig, use_container_width=True)
     with right:
@@ -904,6 +910,7 @@ with tab_logistics:
         fig2 = px.bar(wh, x="destination_warehouse", y="avg_hrs", color="avg_hrs",
                        color_continuous_scale=RISK_RAMP,
                        labels={"destination_warehouse": "", "avg_hrs": "Avg transit hrs"})
+        fig2.update_traces(hovertemplate="Warehouse: <b>%{x}</b><br>Avg Transit: <b>%{y:.1f} hrs</b><extra></extra>")
         fig2.update_layout(coloraxis_showscale=False, **CHART_TEMPLATE, height=380)
         st.plotly_chart(fig2, use_container_width=True)
 
@@ -932,6 +939,7 @@ with tab_weather:
         fig2 = px.scatter(merged_w, x="avg_rain", y="arrivals", trendline="ols" if len(merged_w) > 3 else None,
                            labels={"avg_rain": "Avg monthly rainfall (mm)", "arrivals": "Arrivals (Qtl)"},
                            color_discrete_sequence=[PRIMARY])
+        fig2.update_traces(hovertemplate="Rainfall: <b>%{x:.1f} mm</b><br>Arrivals: <b>%{y:,.0f} Qtl</b><extra></extra>")
         fig2.update_layout(**CHART_TEMPLATE, height=380)
         st.plotly_chart(fig2, use_container_width=True)
 
