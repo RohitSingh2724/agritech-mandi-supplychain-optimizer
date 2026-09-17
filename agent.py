@@ -557,6 +557,15 @@ def _find_crop(q: str, ctx: AgentContext):
     return None
 
 
+def _ensure_col(df: pd.DataFrame, col: str, master: pd.DataFrame) -> pd.DataFrame:
+    """Ensure dataframe `df` has column `col` without creating duplicated suffixes (`col_x`, `col_y`)."""
+    if df.empty:
+        return df
+    if col in df.columns:
+        return df
+    return df.merge(master[["mandi_id", col]], on="mandi_id", how="left")
+
+
 def answer_question(q: str, ctx: AgentContext) -> dict:
     """Return {'answer': str, 'table': DataFrame|None} for a natural-language question."""
     ql = (q or "").strip().lower()
@@ -569,7 +578,7 @@ def answer_question(q: str, ctx: AgentContext) -> dict:
     # --- state queries ------------------------------------------------------
     if "state" in ql:
         if any(k in ql for k in ["revenue", "market value", "worth", "turnover", "valuable", "highest", "most"]):
-            v_m = ctx.valued.merge(ctx.master[["mandi_id", "state"]], on="mandi_id", how="left")
+            v_m = _ensure_col(ctx.valued, "state", ctx.master)
             by_state = v_m.groupby("state")["market_value"].sum().sort_values(ascending=False)
             if not by_state.empty:
                 top_state = by_state.index[0]
@@ -580,7 +589,7 @@ def answer_question(q: str, ctx: AgentContext) -> dict:
                     "table": tbl,
                 }
         if any(k in ql for k in ["arrival", "volume", "quantity"]):
-            a_m = ctx.arrivals.merge(ctx.master[["mandi_id", "state"]], on="mandi_id", how="left")
+            a_m = _ensure_col(ctx.arrivals, "state", ctx.master)
             by_st = a_m.groupby("state")["arrival_quantity_qtl"].sum().sort_values(ascending=False)
             if not by_st.empty:
                 tbl = by_st.reset_index()
@@ -591,8 +600,9 @@ def answer_question(q: str, ctx: AgentContext) -> dict:
                     "table": tbl,
                 }
         if "msp" in ql or "below" in ql or "churn" in ql:
-            p_m = ctx.price.dropna(subset=["msp"]).merge(ctx.master[["mandi_id", "state"]], on="mandi_id", how="left")
+            p_m = _ensure_col(ctx.price.dropna(subset=["msp"]), "state", ctx.master)
             if not p_m.empty:
+                p_m = p_m.copy()
                 p_m["below"] = p_m["modal_price"] < p_m["msp"]
                 by_st = (p_m.groupby("state")["below"].mean() * 100).round(1).sort_values(ascending=False)
                 tbl = by_st.reset_index()
@@ -605,7 +615,7 @@ def answer_question(q: str, ctx: AgentContext) -> dict:
     # --- district queries ---------------------------------------------------
     if "district" in ql:
         if any(k in ql for k in ["revenue", "market value", "worth", "turnover", "highest"]):
-            v_m = ctx.valued.merge(ctx.master[["mandi_id", "district"]], on="mandi_id", how="left")
+            v_m = _ensure_col(ctx.valued, "district", ctx.master)
             by_dist = v_m.groupby("district")["market_value"].sum().sort_values(ascending=False)
             if not by_dist.empty:
                 top_dist = by_dist.index[0]
