@@ -575,6 +575,81 @@ def answer_question(q: str, ctx: AgentContext) -> dict:
     crop = _find_crop(ql, ctx)
     m = ctx.metrics
 
+    # --- weather impact & correlation --------------------------------------
+    if any(k in ql for k in ["weather", "rain", "temperature", "heat", "humid", "climate"]):
+        w = ctx.weather
+        if not w.empty:
+            # 1. Weather impact on revenue/market value
+            if any(k in ql for k in ["revenue", "market value", "valuable", "worth", "turnover", "economic"]):
+                v = ctx.valued
+                if not v.empty and "clean_date" in w.columns and "clean_date" in v.columns:
+                    t_q75 = w["temperature_celsius"].quantile(0.75) if "temperature_celsius" in w.columns else 35
+                    r_q75 = w["rainfall_mm"].quantile(0.75) if "rainfall_mm" in w.columns else 20
+                    stress_w = w[(w["temperature_celsius"] >= t_q75) | (w["rainfall_mm"] >= r_q75)]
+                    if not stress_w.empty:
+                        stress_dates = pd.to_datetime(stress_w["clean_date"]).dt.date.unique()
+                        v_dates = pd.to_datetime(v["clean_date"]).dt.date
+                        v_stress = v[v_dates.isin(stress_dates)]
+                        v_normal = v[~v_dates.isin(stress_dates)]
+
+                        num_s_days = len(stress_dates)
+                        num_n_days = max(v_dates.nunique() - num_s_days, 1)
+                        daily_stress_rev = v_stress["market_value"].sum() / num_s_days if num_s_days else 0
+                        daily_normal_rev = v_normal["market_value"].sum() / num_n_days if num_n_days else 0
+
+                        diff_pct = ((daily_stress_rev - daily_normal_rev) / daily_normal_rev * 100) if daily_normal_rev else 0
+                        direction = "lower" if diff_pct < 0 else "higher"
+
+                        by_crop_stress = v_stress.groupby("crop_name")["market_value"].sum().sort_values(ascending=False)
+                        tbl = (by_crop_stress / 1e7).round(2).reset_index()
+                        tbl.columns = ["Crop", "Revenue on Stress Days (₹ Cr)"]
+
+                        return {
+                            "answer": (
+                                f"**Yes**, weather significantly affects market revenue. On adverse weather stress days "
+                                f"(heat/rain top 25th percentile), average daily market revenue was **{abs(diff_pct):.1f}% {direction}** "
+                                f"at **₹{daily_stress_rev/1e7:,.2f} Cr/day** compared to **₹{daily_normal_rev/1e7:,.2f} Cr/day** on normal days."
+                            ),
+                            "table": tbl,
+                        }
+
+            # 2. Weather impact on crops / arrivals
+            if any(k in ql for k in ["crop", "affect", "impact", "damage", "vulnerable", "worst", "loss"]):
+                a = ctx.arrivals
+                if not a.empty and "clean_date" in w.columns and "clean_date" in a.columns:
+                    t_q75 = w["temperature_celsius"].quantile(0.75) if "temperature_celsius" in w.columns else 35
+                    r_q75 = w["rainfall_mm"].quantile(0.75) if "rainfall_mm" in w.columns else 20
+                    stress_w = w[(w["temperature_celsius"] >= t_q75) | (w["rainfall_mm"] >= r_q75)]
+                    if not stress_w.empty:
+                        stress_dates = pd.to_datetime(stress_w["clean_date"]).dt.date.unique()
+                        a_dates = pd.to_datetime(a["clean_date"]).dt.date
+                        a_stress = a[a_dates.isin(stress_dates)]
+                        if not a_stress.empty:
+                            crop_impact = a_stress.groupby("crop_name")["arrival_quantity_qtl"].sum().sort_values(ascending=False)
+                            top_crop = crop_impact.index[0]
+                            tbl = crop_impact.reset_index()
+                            tbl.columns = ["Crop", "Arrivals on Stress Dates (Qtl)"]
+                            tbl["Arrivals on Stress Dates (Qtl)"] = tbl["Arrivals on Stress Dates (Qtl)"].round(0)
+                            return {
+                                "answer": (
+                                    f"**{top_crop}** was most affected by adverse weather events "
+                                    f"(heat/rainfall top 25th percentile), recording **{crop_impact.iloc[0]:,.0f} Qtl** "
+                                    f"in arrivals across {len(stress_dates)} extreme weather dates."
+                                ),
+                                "table": tbl,
+                            }
+
+            # 3. General weather summary fallback
+            return {
+                "answer": (
+                    f"Average temperature **{w['temperature_celsius'].mean():.1f}°C** "
+                    f"(max {w['temperature_celsius'].max():.1f}°C), average rainfall "
+                    f"**{w['rainfall_mm'].mean():.1f} mm**, average humidity "
+                    f"**{w['humidity_percent'].mean():.0f}%** across {len(w):,} readings."
+                ),
+                "table": None,
+            }
+
     # --- state queries ------------------------------------------------------
     if "state" in ql:
         if any(k in ql for k in ["revenue", "market value", "worth", "turnover", "valuable", "highest", "most"]):
@@ -779,45 +854,7 @@ def answer_question(q: str, ctx: AgentContext) -> dict:
         return {"answer": f"**{total:,.0f}** farmer visits recorded, averaging **{avg_lot:.2f} Qtl** per farmer.",
                 "table": None}
 
-    # --- weather ------------------------------------------------------------
-    if any(k in ql for k in ["weather", "rain", "temperature", "heat", "humid"]):
-        w = ctx.weather
-        if w.empty:
-            return {"answer": "No weather readings in this date window.", "table": None}
 
-        # Crop weather impact calculation
-        if any(k in ql for k in ["crop", "affect", "impact", "damage", "vulnerable", "worst", "loss"]):
-            a = ctx.arrivals
-            if not a.empty and "clean_date" in w.columns and "clean_date" in a.columns:
-                stress_w = w[(w["temperature_celsius"] > 35) | (w["rainfall_mm"] > 20)]
-                if not stress_w.empty:
-                    stress_dates = pd.to_datetime(stress_w["clean_date"]).dt.date.unique()
-                    a_dates = pd.to_datetime(a["clean_date"]).dt.date
-                    a_stress = a[a_dates.isin(stress_dates)]
-                    if not a_stress.empty:
-                        crop_impact = a_stress.groupby("crop_name")["arrival_quantity_qtl"].sum().sort_values(ascending=False)
-                        top_crop = crop_impact.index[0]
-                        tbl = crop_impact.reset_index()
-                        tbl.columns = ["Crop", "Arrivals on Stress Dates (Qtl)"]
-                        tbl["Arrivals on Stress Dates (Qtl)"] = tbl["Arrivals on Stress Dates (Qtl)"].round(0)
-                        return {
-                            "answer": (
-                                f"**{top_crop}** was most affected by adverse weather events "
-                                f"(heat >35°C / rainfall >20mm), recording **{crop_impact.iloc[0]:,.0f} Qtl** "
-                                f"in arrivals across {len(stress_dates)} extreme weather dates."
-                            ),
-                            "table": tbl,
-                        }
-
-        return {
-            "answer": (
-                f"Average temperature **{w['temperature_celsius'].mean():.1f}°C** "
-                f"(max {w['temperature_celsius'].max():.1f}°C), average rainfall "
-                f"**{w['rainfall_mm'].mean():.1f} mm**, average humidity "
-                f"**{w['humidity_percent'].mean():.0f}%** across {len(w):,} readings."
-            ),
-            "table": None,
-        }
 
     # --- count / how many mandis -------------------------------------------
     if "how many" in ql and "mandi" in ql:
