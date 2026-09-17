@@ -784,6 +784,31 @@ def answer_question(q: str, ctx: AgentContext) -> dict:
         w = ctx.weather
         if w.empty:
             return {"answer": "No weather readings in this date window.", "table": None}
+
+        # Crop weather impact calculation
+        if any(k in ql for k in ["crop", "affect", "impact", "damage", "vulnerable", "worst", "loss"]):
+            a = ctx.arrivals
+            if not a.empty and "clean_date" in w.columns and "clean_date" in a.columns:
+                stress_w = w[(w["temperature_celsius"] > 35) | (w["rainfall_mm"] > 20)]
+                if not stress_w.empty:
+                    stress_dates = pd.to_datetime(stress_w["clean_date"]).dt.date.unique()
+                    a_dates = pd.to_datetime(a["clean_date"]).dt.date
+                    a_stress = a[a_dates.isin(stress_dates)]
+                    if not a_stress.empty:
+                        crop_impact = a_stress.groupby("crop_name")["arrival_quantity_qtl"].sum().sort_values(ascending=False)
+                        top_crop = crop_impact.index[0]
+                        tbl = crop_impact.reset_index()
+                        tbl.columns = ["Crop", "Arrivals on Stress Dates (Qtl)"]
+                        tbl["Arrivals on Stress Dates (Qtl)"] = tbl["Arrivals on Stress Dates (Qtl)"].round(0)
+                        return {
+                            "answer": (
+                                f"**{top_crop}** was most affected by adverse weather events "
+                                f"(heat >35°C / rainfall >20mm), recording **{crop_impact.iloc[0]:,.0f} Qtl** "
+                                f"in arrivals across {len(stress_dates)} extreme weather dates."
+                            ),
+                            "table": tbl,
+                        }
+
         return {
             "answer": (
                 f"Average temperature **{w['temperature_celsius'].mean():.1f}°C** "

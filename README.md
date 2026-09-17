@@ -87,7 +87,7 @@ Open your browser at `http://localhost:8501` to view the interactive application
 ## 📊 Key Analytical Features & Dashboards
 
 1. **Top Executive KPI Scorecards:** Real-time visibility into Estimated Market Revenue (`₹43,913.5 Cr`), Total Arrivals (`114,905,081 Qtl`), MSP Compliance %, Farmer 'Churn' Risk %, Avg Transit Time, and Weather Risk Index.
-2. **AI Agent & Natural Language Chatbot:** Interactive Q&A chatbot (`st.expander`), top priority findings, and optional Claude LLM API integration.
+2. **AI Agent & Natural Language Chatbot:** Interactive Q&A chatbot (`st.expander`), top priority findings, crop weather impact calculations, and optional Claude LLM API integration.
 3. **⚡ Executive Action Simulator & ROI Calculator:** Interactive scenario modeler to simulate Government MSP Procurement Desk interventions, Logistics Route Optimization, and Mobile Cold Storage deployment.
 4. **Price & MSP Analytics:** Trendlines of Modal Prices vs. MSP thresholds across Wheat, Rice, Mustard, Cotton, and Maize.
 5. **Logistics Bottleneck Analysis:** Transit time distribution histograms, warehouse delay rankings, and distance-vs-time scatter plots.
