@@ -566,6 +566,56 @@ def answer_question(q: str, ctx: AgentContext) -> dict:
     crop = _find_crop(ql, ctx)
     m = ctx.metrics
 
+    # --- state queries ------------------------------------------------------
+    if "state" in ql:
+        if any(k in ql for k in ["revenue", "market value", "worth", "turnover", "valuable", "highest", "most"]):
+            v_m = ctx.valued.merge(ctx.master[["mandi_id", "state"]], on="mandi_id", how="left")
+            by_state = v_m.groupby("state")["market_value"].sum().sort_values(ascending=False)
+            if not by_state.empty:
+                top_state = by_state.index[0]
+                tbl = (by_state / 1e7).round(2).reset_index()
+                tbl.columns = ["State", "Market value (₹ Cr)"]
+                return {
+                    "answer": f"**{top_state}** has the highest total market revenue at **₹{by_state.iloc[0]/1e7:,.2f} Cr**.",
+                    "table": tbl,
+                }
+        if any(k in ql for k in ["arrival", "volume", "quantity"]):
+            a_m = ctx.arrivals.merge(ctx.master[["mandi_id", "state"]], on="mandi_id", how="left")
+            by_st = a_m.groupby("state")["arrival_quantity_qtl"].sum().sort_values(ascending=False)
+            if not by_st.empty:
+                tbl = by_st.reset_index()
+                tbl.columns = ["State", "Arrivals (Qtl)"]
+                tbl["Arrivals (Qtl)"] = tbl["Arrivals (Qtl)"].round(0)
+                return {
+                    "answer": f"**{by_st.index[0]}** records the highest total arrivals at **{by_st.iloc[0]:,.0f} Qtl**.",
+                    "table": tbl,
+                }
+        if "msp" in ql or "below" in ql or "churn" in ql:
+            p_m = ctx.price.dropna(subset=["msp"]).merge(ctx.master[["mandi_id", "state"]], on="mandi_id", how="left")
+            if not p_m.empty:
+                p_m["below"] = p_m["modal_price"] < p_m["msp"]
+                by_st = (p_m.groupby("state")["below"].mean() * 100).round(1).sort_values(ascending=False)
+                tbl = by_st.reset_index()
+                tbl.columns = ["State", "% Below MSP"]
+                return {
+                    "answer": f"**{by_st.index[0]}** has the highest rate of below-MSP transactions at **{by_st.iloc[0]:.1f}%**.",
+                    "table": tbl,
+                }
+
+    # --- district queries ---------------------------------------------------
+    if "district" in ql:
+        if any(k in ql for k in ["revenue", "market value", "worth", "turnover", "highest"]):
+            v_m = ctx.valued.merge(ctx.master[["mandi_id", "district"]], on="mandi_id", how="left")
+            by_dist = v_m.groupby("district")["market_value"].sum().sort_values(ascending=False)
+            if not by_dist.empty:
+                top_dist = by_dist.index[0]
+                tbl = (by_dist / 1e7).round(2).reset_index()
+                tbl.columns = ["District", "Market value (₹ Cr)"]
+                return {
+                    "answer": f"**{top_dist}** district generates the highest market revenue at **₹{by_dist.iloc[0]/1e7:,.2f} Cr**.",
+                    "table": tbl.head(10),
+                }
+
     # --- risk ---------------------------------------------------------------
     if any(k in ql for k in ["riskiest", "highest risk", "most risky", "worst mandi", "risky"]):
         if ctx.risk.empty:
@@ -627,9 +677,9 @@ def answer_question(q: str, ctx: AgentContext) -> dict:
         }
 
     # --- revenue / value ----------------------------------------------------
-    if any(k in ql for k in ["revenue", "market value", "worth", "turnover"]):
+    if any(k in ql for k in ["revenue", "market value", "worth", "turnover", "valuable"]):
+        v = ctx.valued.dropna(subset=["market_value"])
         if "trend" in ql or "up or down" in ql or "trending" in ql:
-            v = ctx.valued.dropna(subset=["market_value"])
             monthly = _complete_months(v, "market_value")
             if len(monthly) < 3:
                 return {"answer": "Not enough complete months in this window to judge a trend.", "table": None}
@@ -640,15 +690,17 @@ def answer_question(q: str, ctx: AgentContext) -> dict:
                     "table": None}
         rev = m.get("total_revenue", np.nan)
         if crop:
-            v = ctx.valued[ctx.valued["crop_name"] == crop]
-            cr = v["market_value"].sum()
+            sub = v[v["crop_name"] == crop]
+            cr = sub["market_value"].sum()
             share = 100 * cr / rev if rev else np.nan
             return {"answer": f"**{crop}** accounts for **₹{cr/1e7:,.2f} Cr** — about **{share:.1f}%** of the selection's total.",
                     "table": None}
-        by_crop = ctx.valued.groupby("crop_name")["market_value"].sum().sort_values(ascending=False)
-        tbl = (by_crop / 1e7).round(2).reset_index()
-        tbl.columns = ["Crop", "Market value (₹ Cr)"]
-        return {"answer": f"Estimated market value for the current selection is **₹{rev/1e7:,.2f} Cr**.", "table": tbl}
+        by_mandi = v.groupby("mandi_id")["market_value"].sum().sort_values(ascending=False)
+        top_id = by_mandi.index[0]
+        tbl = (by_mandi.head(5) / 1e7).round(2).reset_index()
+        tbl["mandi_id"] = tbl["mandi_id"].apply(lambda x: _mandi_name(ctx, x))
+        tbl.columns = ["Mandi", "Market value (₹ Cr)"]
+        return {"answer": f"Estimated market value for the selection is **₹{rev/1e7:,.2f} Cr**. Top mandi is **{_mandi_name(ctx, top_id)}**.", "table": tbl}
 
     # --- arrivals / volume --------------------------------------------------
     if any(k in ql for k in ["arrival", "volume", "quantity", "busiest", "largest mandi", "highest arrival"]):
@@ -739,9 +791,9 @@ def answer_question(q: str, ctx: AgentContext) -> dict:
     # --- fallback -----------------------------------------------------------
     return {
         "answer": (
-            "I couldn't map that to a metric I compute. Try asking about **risk**, **MSP**, "
-            "**revenue**, **arrivals**, **prices**, **farmers**, **logistics** or **weather** — "
-            "or use one of the suggested questions."
+            "I couldn't map that to a metric I compute. Try asking about **state**, **district**, "
+            "**mandi**, **crop**, **risk**, **MSP**, **revenue**, **arrivals**, **prices**, "
+            "**logistics** or **weather** — or use one of the suggested questions."
         ),
         "table": None,
     }
