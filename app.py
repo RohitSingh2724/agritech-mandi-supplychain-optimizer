@@ -225,11 +225,16 @@ st.markdown(
     }}
     .stTabs [data-baseweb="tab"] {{
         background-color: transparent; border-radius: 6px; padding: 9px 16px;
-        border: none; font-weight: 600; font-size: 0.86rem; color: {MUTED};
+        border: none; font-weight: 600; font-size: 0.86rem; color: {MUTED} !important;
+        transition: all 0.2s ease;
     }}
-    .stTabs [data-baseweb="tab"]:hover {{ background-color: #1F242D; color: #F8FAFC; }}
+    .stTabs [data-baseweb="tab"]:hover {{ background-color: #1F242D !important; color: #F8FAFC !important; }}
     .stTabs [aria-selected="true"] {{
-        background-color: {PRIMARY} !important; color: #0F172A !important; font-weight: 700 !important;
+        background-color: #1F242D !important;
+        color: {PRIMARY} !important;
+        font-weight: 700 !important;
+        border-bottom: 3px solid {PRIMARY} !important;
+        border-radius: 6px 6px 2px 2px !important;
     }}
     .stTabs [data-baseweb="tab-highlight"], .stTabs [data-baseweb="tab-border"] {{ display: none; }}
 
